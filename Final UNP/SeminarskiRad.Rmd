@@ -1,0 +1,799 @@
+---
+title: "Seminarski rad - Student Performance Factors"
+output: html_document
+date: "2024-10-02"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Učitavanje potrebnih biblioteka
+
+```{r}
+library(tidyverse)
+library(Amelia)
+library(moments)
+library(dplyr)
+library(reshape2)
+library(rpart)
+library(rpart.plot)
+library(randomForest)
+```
+
+Učitavanje dataset-a i tabelarni prikaz
+
+```{r}
+dataset <- read.csv("StudentPerformanceFactors.csv")
+View(dataset)
+```
+
+Prikaz strukture dataset-a
+
+```{r}
+str(dataset)
+```
+
+Prikaz dimenzija dataset-a
+
+```{r}
+dim(dataset)
+```
+
+Prikaz dodatnih informacija o svakoj koloni
+
+```{r}
+summary(dataset)
+```
+
+Provera NA vrednosti u kolonama preko sapply funkcije. NA vrednosti su bile prazna polja, pa je bilo potrebno proći kroz kolone i pronaći za svaku broj praznih polja
+
+```{r}
+empty_counts <- sapply(dataset, function(x) sum(x == ""))
+result <- data.frame(Count = empty_counts[empty_counts > 0])
+print(result)
+```
+
+Popunjavanje praznih polja sa vrednošću "NA"
+
+```{r}
+dataset[dataset == ""] <- NA
+colSums(is.na(dataset))
+```
+
+Procentualni prikaz NA vrednosti po kolonama
+
+```{r}
+colMeans(is.na(dataset)) * 100
+```
+
+Grafički prikaz raspodele NA vrednosti
+
+```{r}
+missmap(dataset)
+```
+
+Pronalaženje redova koji imaju više od jedne NA vrednosti jer oni verovatno predstavljaju problem u podacima
+
+```{r}
+rows_with_multiple_na <- rowSums(is.na(dataset)) > 1
+dataset[rows_with_multiple_na, ]
+```
+
+Brisanje redova koji imaju više od jedne NA vrednosti
+
+```{r}
+dataset <- dataset[rowSums(is.na(dataset)) <= 1, ]
+rows_with_multiple_na <- rowSums(is.na(dataset)) > 1
+dataset[rows_with_multiple_na, ]
+```
+
+Prikaz broja vrednosti u koloni Distance_from_Home za svaku kategoriju
+
+```{r}
+table(dataset$Distance_from_Home)
+```
+
+Raspodela kolone Distance_from_Home grafički
+
+```{r}
+ggplot(dataset, aes(x = Distance_from_Home)) + geom_bar(fill = "steelblue", color = "black") + labs(title = "Distribution of the Distance_from_Home column") + xlab("Value") + ylab("Count") + theme(plot.title = element_text(hjust = 0.5, vjust = 1, face = "bold"))
+```
+
+Popunjavanje NA vrednosti u koloni Distance_from_Home sa najčeščom vrednošću koja se pojavljuje u toj koloni (Near)
+
+```{r}
+dataset$Distance_from_Home[is.na(dataset$Distance_from_Home)] <- "Near"
+table(dataset$Distance_from_Home)
+```
+
+Prikaz broja vrednosti u koloni Parental_Education_Level za svaku kategoriju
+
+```{r}
+table(dataset$Parental_Education_Level)
+```
+
+Raspodela kolone Parental_Education_Level grafički
+
+```{r}
+ggplot(dataset, aes(x = Parental_Education_Level)) + geom_bar(fill = "steelblue", color = "black") + labs(title = "Distribution of the Parental_Education_Level column") + xlab("Value") + ylab("Count") + theme(plot.title = element_text(hjust = 0.5, vjust = 1, face = "bold"))
+```
+
+Popunjavanje NA vrednosti u koloni Parental_Education_Level sa najčeščom vrednošću koja se pojavljuje u toj koloni (High School)
+
+```{r}
+dataset$Parental_Education_Level[is.na(dataset$Parental_Education_Level)] <- "High School"
+table(dataset$Parental_Education_Level)
+```
+
+Prikaz broja vrednosti u koloni Teacher_Quality za svaku kategoriju
+
+```{r}
+table(dataset$Teacher_Quality)
+```
+
+Raspodela kolone Teacher_Quality grafički
+
+```{r}
+ggplot(dataset, aes(x = Teacher_Quality)) + geom_bar(fill = "steelblue", color = "black") + labs(title = "Distribution of the Teacher_Quality column") + xlab("Value") + ylab("Count") + theme(plot.title = element_text(hjust = 0.5, vjust = 1, face = "bold"))
+```
+
+Popunjavanje NA vrednosti u koloni Teacher_Quality sa najčeščom vrednošću koja se pojavljuje u toj koloni (Medium)
+
+```{r}
+dataset$Teacher_Quality[is.na(dataset$Teacher_Quality)] <- "Medium"
+table(dataset$Teacher_Quality)
+```
+
+Prikaz osnovnih statističkih podataka iz kolone Hours_Studied
+
+```{r}
+summary(dataset$Hours_Studied)
+```
+
+Raspodela kolone Hours_Studied grafički
+
+```{r}
+ggplot(dataset, aes(x = Hours_Studied)) + geom_histogram(fill = "steelblue", color = "black", bins = 30) + labs(title = "Distribution of the Hours_Studied column") + xlab("Hours Studied") + ylab("Count") + theme(plot.title = element_text(hjust = 0.5, vjust = 1, face = "bold"))
+```
+
+Raspodela kolone Hours_Studied grafički preko boxplot-a
+
+```{r}
+ggplot(dataset, aes(x = Hours_Studied)) + geom_boxplot(fill = "steelblue", color = "black") + labs(title = "Distribution of the Hours_Studied column") + xlab("Hours Studied") + ylab("Count") + theme(plot.title = element_text(hjust = 0.5, vjust = 1, face = "bold"))
+```
+
+Identifikacija tačnih vrednosti outlier-a pomoću z-score metode
+
+```{r}
+z_scores <- (dataset$Hours_Studied - mean(dataset$Hours_Studied)) / sd(dataset$Hours_Studied)
+outliers_z <- dataset$Hours_Studied[abs(z_scores) > 3]
+print(outliers_z)
+```
+
+Prikaz osnovnih statističkih podataka iz kolone Attendance
+
+```{r}
+summary(dataset$Attendance)
+```
+
+Pomoću funckije skewness izračunavamo asimetriju distribucije
+
+```{r}
+skewness_value <- skewness(dataset$Attendance)
+print(skewness_value)
+```
+
+Raspodela kolone Attendance grafički preko boxplot-a
+
+```{r}
+ggplot(dataset, aes(x = Attendance)) + geom_boxplot(fill = "steelblue", color = "black") + labs(title = "Distribution of the Attendance column") + xlab("Value") + ylab("Count") + theme(plot.title = element_text(hjust = 0.5, vjust = 1, face = "bold"))
+```
+
+Prikaz osnovnih statističkih podataka iz kolone Sleep_Hours
+
+```{r}
+summary(dataset$Sleep_Hours)
+```
+
+Raspodela kolone Sleep_Hours grafički
+
+```{r}
+ggplot(dataset, aes(x = Sleep_Hours)) + geom_histogram(fill = "steelblue", color = "black", binwidth = 1) + labs(title = "Distribution of the Sleep_Hours column") + xlab("Value") + ylab("Count") + theme(plot.title = element_text(hjust = 0.5, vjust = 1, face = "bold"))
+```
+
+Računanje standardne devijacije da bismo razumeli raspodelu podataka
+
+```{r}
+std_dev <- sd(dataset$Sleep_Hours)
+print(std_dev)
+```
+
+Raspodela kolone Sleep_Hours grafički preko boxplot-a
+
+```{r}
+ggplot(dataset, aes(x = Sleep_Hours)) + geom_boxplot(fill = "steelblue", color = "black") + labs(title = "Distribution of the Sleep_Hours column") + xlab("Value") + ylab("Count") + theme(plot.title = element_text(hjust = 0.5, vjust = 1, face = "bold"))
+```
+
+Prikaz osnovnih statističkih podataka iz kolone Previous_Scores
+
+```{r}
+summary(dataset$Previous_Scores)
+```
+
+Raspodela kolone Previous_Scores grafički
+
+```{r}
+ggplot(dataset, aes(x = Previous_Scores)) + geom_histogram(fill = "steelblue", color = "black", binwidth = 1) + labs(title = "Distribution of the Previous_Scores column") + xlab("Value") + ylab("Count") + theme(plot.title = element_text(hjust = 0.5, vjust = 1, face = "bold"))
+```
+
+Računanje standardne devijacije da bismo razumeli raspodelu podataka
+
+```{r}
+std_dev <- sd(dataset$Previous_Scores)
+print(std_dev)
+```
+
+Raspodela kolone Previous_Scores grafički preko boxplot-a
+
+```{r}
+ggplot(dataset, aes(x = Previous_Scores)) + geom_boxplot(fill = "steelblue", color = "black") + labs(title = "Distribution of the Previous_Scores column") + xlab("Value") + ylab("Count") + theme(plot.title = element_text(hjust = 0.5, vjust = 1, face = "bold"))
+```
+
+Prikaz osnovnih statističkih podataka iz kolone Tutoring_Sessions
+
+```{r}
+summary(dataset$Tutoring_Sessions)
+```
+
+Pomoću funckije skewness izračunavamo asimetriju distribucije
+
+```{r}
+skewness_value <- skewness(dataset$Tutoring_Sessions)
+print(skewness_value)
+```
+
+Raspodela kolone Tutoring_Sessions grafički
+
+```{r}
+ggplot(dataset, aes(x = Tutoring_Sessions)) + geom_histogram(fill = "steelblue", color = "black", binwidth = 1) + labs(title = "Distribution of the Tutoring_Sessions column") + xlab("Value") + ylab("Count") + theme(plot.title = element_text(hjust = 0.5, vjust = 1, face = "bold"))
+```
+
+Raspodela kolone Tutoring_Sessions grafički preko boxplot-a
+
+```{r}
+ggplot(dataset, aes(x = Tutoring_Sessions)) + geom_boxplot(fill = "steelblue", color = "black") + labs(title = "Distribution of the Tutoring_Sessions column") + xlab("Value") + ylab("Count") + theme(plot.title = element_text(hjust = 0.5, vjust = 1, face = "bold"))
+```
+
+Prikaz osnovnih statističkih podataka iz kolone Physical_Activity
+
+```{r}
+summary(dataset$Physical_Activity)
+```
+
+Raspodela kolone Physical_Activity grafički
+
+```{r}
+ggplot(dataset, aes(x = Physical_Activity)) + geom_histogram(fill = "steelblue", color = "black", binwidth = 1) + labs(title = "Distribution of the Physical_Activity column") + xlab("Value") + ylab("Count") + theme(plot.title = element_text(hjust = 0.5, vjust = 1, face = "bold"))
+```
+
+Prikaz osnovnih statističkih podataka iz kolone Exam_Score
+
+```{r}
+summary(dataset$Exam_Score)
+```
+
+Raspodela kolone Exam_Score grafički
+
+```{r}
+ggplot(dataset, aes(x = Exam_Score)) + geom_histogram(fill = "steelblue", color = "black", binwidth = 1) + labs(title = "Distribution of the Exam_Score column") + xlab("Value") + ylab("Count") + theme(plot.title = element_text(hjust = 0.5, vjust = 1, face = "bold"))
+```
+
+Tabela učestanosti za kolonu Parental_Involvement
+
+```{r}
+xtabs(~Parental_Involvement, dataset)
+```
+
+Raspodela kolone Parental_Involvement grafički
+
+```{r}
+ggplot(dataset, aes(x = Parental_Involvement)) + geom_bar(fill = "steelblue", color = "black") + labs(title = "Distribution of the Parental_Involvement column") + xlab("Value") + ylab("Count") + theme(plot.title = element_text(hjust = 0.5, vjust = 1, face = "bold"))
+```
+
+Tabela učestanosti za kolonu Access_to_Resources
+
+```{r}
+xtabs(~Access_to_Resources, dataset)
+```
+
+Raspodela kolone Access_to_Resources grafički
+
+```{r}
+ggplot(dataset, aes(x = Access_to_Resources)) + geom_bar(fill = "steelblue", color = "black") + labs(title = "Distribution of the Access_to_Resources column") + xlab("Value") + ylab("Count") + theme(plot.title = element_text(hjust = 0.5, vjust = 1, face = "bold"))
+```
+
+Tabela učestanosti za kolonu Extracurricular_Activities
+
+```{r}
+xtabs(~Extracurricular_Activities, dataset)
+```
+
+Raspodela kolone Extracurricular_Activities grafički
+
+```{r}
+ggplot(dataset, aes(x = Extracurricular_Activities)) + geom_bar(fill = "steelblue", color = "black") + labs(title = "Distribution of the Extracurricular_Activities column") + xlab("Value") + ylab("Count") + theme(plot.title = element_text(hjust = 0.5, vjust = 1, face = "bold"))
+```
+
+Tabela učestanosti za kolonu Motivation_Level
+
+```{r}
+xtabs(~Motivation_Level, dataset)
+```
+
+Raspodela kolone Motivation_Level grafički
+
+```{r}
+ggplot(dataset, aes(x = Motivation_Level)) + geom_bar(fill = "steelblue", color = "black") + labs(title = "Distribution of the Motivation_Level column") + xlab("Value") + ylab("Count") + theme(plot.title = element_text(hjust = 0.5, vjust = 1, face = "bold"))
+```
+
+Tabela učestanosti za kolonu Internet_Access
+
+```{r}
+xtabs(~Internet_Access, dataset)
+```
+
+Raspodela kolone Internet_Access grafički
+
+```{r}
+ggplot(dataset, aes(x = Internet_Access)) + geom_bar(fill = "steelblue", color = "black") + labs(title = "Distribution of the Internet_Access column") + xlab("Value") + ylab("Count") + theme(plot.title = element_text(hjust = 0.5, vjust = 1, face = "bold"))
+```
+
+Tabela učestanosti za kolonu Family_Income
+
+```{r}
+xtabs(~Family_Income, dataset)
+```
+
+Raspodela kolone Family_Income grafički
+
+```{r}
+ggplot(dataset, aes(x = Family_Income)) + geom_bar(fill = "steelblue", color = "black") + labs(title = "Distribution of the Family_Income column") + xlab("Value") + ylab("Count") + theme(plot.title = element_text(hjust = 0.5, vjust = 1, face = "bold"))
+```
+
+Tabela učestanosti za kolonu Teacher_Quality
+
+```{r}
+xtabs(~Teacher_Quality, dataset)
+```
+
+Raspodela kolone Teacher_Quality grafički
+
+```{r}
+ggplot(dataset, aes(x = Teacher_Quality)) + geom_bar(fill = "steelblue", color = "black") + labs(title = "Distribution of the Teacher_Quality column") + xlab("Value") + ylab("Count") + theme(plot.title = element_text(hjust = 0.5, vjust = 1, face = "bold"))
+```
+
+Tabela učestanosti za kolonu School_Type
+
+```{r}
+xtabs(~School_Type, dataset)
+```
+
+Raspodela kolone School_Type grafički
+
+```{r}
+ggplot(dataset, aes(x = School_Type)) + geom_bar(fill = "steelblue", color = "black") + labs(title = "Distribution of the School_Type column") + xlab("Value") + ylab("Count") + theme(plot.title = element_text(hjust = 0.5, vjust = 1, face = "bold"))
+```
+
+Tabela učestanosti za kolonu Peer_Influence
+
+```{r}
+xtabs(~Peer_Influence, dataset)
+```
+
+Raspodela kolone Peer_Influence grafički
+
+```{r}
+ggplot(dataset, aes(x = Peer_Influence)) + geom_bar(fill = "steelblue", color = "black") + labs(title = "Distribution of the Peer_Influence column") + xlab("Value") + ylab("Count") + theme(plot.title = element_text(hjust = 0.5, vjust = 1, face = "bold"))
+```
+
+Tabela učestanosti za kolonu Learning_Disabilities
+
+```{r}
+xtabs(~Learning_Disabilities, dataset)
+```
+
+Raspodela kolone Learning_Disabilities grafički
+
+```{r}
+ggplot(dataset, aes(x = Learning_Disabilities)) + geom_bar(fill = "steelblue", color = "black") + labs(title = "Distribution of the Learning_Disabilities column") + xlab("Value") + ylab("Count") + theme(plot.title = element_text(hjust = 0.5, vjust = 1, face = "bold"))
+```
+
+Tabela učestanosti za kolonu Parental_Education_Level
+
+```{r}
+xtabs(~Parental_Education_Level, dataset)
+```
+
+Raspodela kolone Parental_Education_Level grafički
+
+```{r}
+ggplot(dataset, aes(x = Parental_Education_Level)) + geom_bar(fill = "steelblue", color = "black") + labs(title = "Distribution of the Parental_Education_Level column") + xlab("Value") + ylab("Count") + theme(plot.title = element_text(hjust = 0.5, vjust = 1, face = "bold"))
+```
+
+Tabela učestanosti za kolonu Distance_from_Home
+
+```{r}
+xtabs(~Distance_from_Home, dataset)
+```
+
+Raspodela kolone Distance_from_Home grafički
+
+```{r}
+ggplot(dataset, aes(x = Distance_from_Home)) + geom_bar(fill = "steelblue", color = "black") + labs(title = "Distribution of the Distance_from_Home column") + xlab("Value") + ylab("Count") + theme(plot.title = element_text(hjust = 0.5, vjust = 1, face = "bold"))
+```
+
+Tabela učestanosti za kolonu Gender
+
+```{r}
+xtabs(~Gender, dataset)
+```
+
+Raspodela kolone Gender grafički
+
+```{r}
+ggplot(dataset, aes(x = Gender)) + geom_bar(fill = "steelblue", color = "black") + labs(title = "Distribution of the Gender column") + xlab("Value") + ylab("Count") + theme(plot.title = element_text(hjust = 0.5, vjust = 1, face = "bold"))
+```
+
+Grafički prikaz analize Hours Studied i Exam Score
+
+```{r}
+ggplot(dataset, aes(x = Hours_Studied, y = Exam_Score)) + geom_point(color = "steelblue") + labs(title = "Exam Score based on Hours Studied") + xlab("Hours Studied") + ylab("Exam Score") + theme(plot.title = element_text(hjust = 0.5, vjust = 1, face = "bold"))
+```
+
+Izdvojićemo vrednosti iznad 80
+
+```{r}
+high_scorers <- filter(dataset, Exam_Score > 80)
+print(high_scorers)
+```
+
+Summary za visoke rezultate
+
+```{r}
+summary(high_scorers)
+```
+
+Proveravamo da li postoji neki patern u atributima za studente koji malo uče, a imaju dobre rezultate
+
+```{r}
+filtered_students <- dataset %>% filter(Hours_Studied < 10 & Exam_Score > 80)
+filtered_students_extra <- filtered_students %>% select(Hours_Studied, Attendance, Family_Income, Previous_Scores, Motivation_Level, Exam_Score)
+print(filtered_students_extra)
+```
+
+Grafički prikaz visokih rezultata
+
+```{r}
+ggplot(high_scorers, aes(x = Hours_Studied, y = Exam_Score)) + geom_point(color = "steelblue") + labs(title = "Exam Score based on Hours Studied") + xlab("Hours Studied") + ylab("Exam Score") + theme(plot.title = element_text(hjust = 0.5, vjust = 1, face = "bold"))
+```
+
+Grafički prikaz analize Hours Studied i Exam Score geom_smooth
+
+```{r}
+ggplot(dataset, aes(x = Hours_Studied, y = Exam_Score)) + geom_smooth(method = "loess", color = "steelblue") + labs(title = "Realationship between Hours Studied and Exam Score") + xlab("Hours Studied") + ylab("Exam Score") + theme(plot.title = element_text(hjust = 0.5, vjust = 1, face = "bold"))
+```
+
+Grafički prikaz analize Attendance i Exam Score
+
+```{r}
+ggplot(dataset, aes(x = Attendance, y = Exam_Score)) + geom_point(color = "steelblue") + labs(title = "Exam Score based on Attendance") + xlab("Attendance") + ylab("Exam Score") + theme(plot.title = element_text(hjust = 0.5, vjust = 1, face = "bold"))
+```
+
+Grafički prikaz analize Attendance i Exam Score geom_smooth
+
+```{r}
+ggplot(dataset, aes(x = Attendance, y = Exam_Score)) + geom_smooth(method = "loess", color = "steelblue") + labs(title = "Realationship between Attendance and Exam Score") + xlab("Attendance") + ylab("Exam Score") + theme(plot.title = element_text(hjust = 0.5, vjust = 1, face = "bold"))
+```
+
+Grafički prikaz analize Access_to_Resources i Exam Score
+
+```{r}
+ggplot(dataset, aes(x = Access_to_Resources, y = Exam_Score)) + geom_boxplot(color = "steelblue") + labs(title = "Exam Score based on Access to Resources") + xlab("Access to Resources") + ylab("Exam Score") + theme(plot.title = element_text(hjust = 0.5, vjust = 1, face = "bold"))
+```
+
+Grafički prikaz analize Sleep_Hours i Exam Score
+
+```{r}
+ggplot(dataset, aes(x = as.factor(Sleep_Hours), y = Exam_Score)) + geom_boxplot(color = "steelblue") + labs(title = "Exam Score based on Sleep Hours") + xlab("Sleep Hours") + ylab("Exam Score") + theme(plot.title = element_text(hjust = 0.5, vjust = 1, face = "bold"))
+```
+
+Grafički prikaz analize Motivation_Level i Exam Score
+
+```{r}
+ggplot(dataset, aes(x = Motivation_Level, y = Exam_Score)) + geom_boxplot(color = "steelblue") + labs(title = "Exam Score based on Motivation Level") + xlab("Motivation Level") + ylab("Exam Score") + theme(plot.title = element_text(hjust = 0.5, vjust = 1, face = "bold"))
+```
+
+Grafički prikaz analize Internet_Access i Exam Score
+
+```{r}
+ggplot(dataset, aes(x = Internet_Access, y = Exam_Score)) + geom_boxplot(color = "steelblue") + labs(title = "Exam Score based on Internet Access") + xlab("Internet Access") + ylab("Exam Score") + theme(plot.title = element_text(hjust = 0.5, vjust = 1, face = "bold"))
+```
+
+Grafički prikaz analize Tutoring_Sessions i Exam Score
+
+```{r}
+ggplot(dataset, aes(x = as.factor(Tutoring_Sessions), y = Exam_Score)) + geom_boxplot(color = "steelblue") + labs(title = "Exam Score based on Tutoring Sessions") + xlab("Tutoring Sessions") + ylab("Exam Score") + theme(plot.title = element_text(hjust = 0.5, vjust = 1, face = "bold"))
+```
+
+Feature Engineering. Podela kolone Tutoring_Sessions na 3 kategorije (None, Between 1 and 3, More than 3) i prikaz dobijenog rezultata
+
+```{r}
+dataset$Tutoring_Categories <- cut(dataset$Tutoring_Sessions, breaks = c(-Inf, 0, 3, Inf), labels = c ("None", "Between 1 and 3", "More than 3"), right = TRUE)
+head(dataset[, c("Tutoring_Sessions", "Tutoring_Categories")])
+```
+
+Raspodela kolone Tutoring_Categories grafički
+
+```{r}
+ggplot(dataset, aes(x = Tutoring_Categories)) + geom_bar(fill = "steelblue", color = "black") + labs(title = "Distribution of the Tutoring Categories column") + xlab("Tutoring Categories") + ylab("Count") + theme(plot.title = element_text(hjust = 0.5, vjust = 1, face = "bold"))
+```
+
+Grafički prikaz analize Tutoring_Categories i Exam_Score
+
+```{r}
+ggplot(dataset, aes(x = Tutoring_Categories, y = Exam_Score)) + geom_boxplot(color = "steelblue") + labs(title = "Exam Score based on Tutoring Categories") + xlab("Tutoring Categories") + ylab("Exam Score") + theme(plot.title = element_text(hjust = 0.5, vjust = 1, face = "bold"))
+```
+
+Grafički prikaz analize Peer_Influence i Exam_Score
+
+```{r}
+ggplot(dataset, aes(x = Peer_Influence, y = Exam_Score)) + geom_boxplot(fill = "steelblue", color = "black")+ labs(title = "Exam Score based on Peer Influence", x = "Peer Influence", y = "Exam Score") + theme_minimal() + theme(plot.title = element_text(hjust = 0.5, vjust = 1, face = "bold"))
+```
+
+Grafički prikaz analize Learning_Disabilities i Exam_Score
+
+```{r}
+ggplot(dataset, aes(x = Learning_Disabilities, y = Exam_Score)) + geom_boxplot(fill = "steelblue", color = "black")+ labs(title = "Exam Score based on Learning Disabilities", x = "Learning Disabilities", y = "Exam Score") + theme_minimal() + theme(plot.title = element_text(hjust = 0.5, vjust = 1, face = "bold"))
+```
+
+Grafički prikaz analize Hours_Studied, Attendance i Exam_Score
+
+```{r}
+ggplot(dataset, aes(x = Hours_Studied, y = Exam_Score, color = Attendance)) + geom_point() + labs(title = "Exam Score based on Hours Studied and Attendance") + scale_color_viridis_c() + xlab("Hours Studied") + ylab("Exam Score") + theme(plot.title = element_text(hjust = 0.5, vjust = 1, face = "bold"))
+```
+
+Podela Attendance i Hours_Studied na intervale i određivanje proseka poena
+
+```{r}
+dataset <- dataset %>% mutate(Hours_Studied_Interval = cut(Hours_Studied, breaks = seq(0, max(Hours_Studied) + 20, by = 20), right = FALSE), Attendance_Interval = cut(Attendance, breaks = seq(0, 100, by = 20), right = TRUE))
+avg_scores <- dataset %>% group_by(Hours_Studied_Interval, Attendance_Interval) %>% summarize(Avg_Exam_Score = mean(Exam_Score), .groups = 'drop')
+print(avg_scores)
+```
+
+Grafički prikaz analize Hours_Studied_Interval, Attendance_Interval i Exam_Score
+
+```{r}
+ggplot(avg_scores, aes(x = Hours_Studied_Interval, y = Attendance_Interval, fill = Avg_Exam_Score)) + geom_tile() + labs(title = "Average Exam Score by Hours Studied and Attendance Intervals", x = "Hours Studied Interval", y = "Attendance Interval", fill = "Avg Exam Score") +
+scale_fill_viridis_c() + theme_minimal() + theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+```
+
+Grafički prikaz analize Hours_Studied, Tutoring_Categories i Exam_Score
+
+```{r}
+ggplot(dataset, aes(x = Hours_Studied, y = Exam_Score, color = Tutoring_Categories)) + geom_point() + labs(title = "Exam Score based on Hours Studied and Attendance") + scale_color_viridis_d() + xlab("Hours Studied") + ylab("Exam Score") + theme(plot.title = element_text(hjust = 0.5, vjust = 1, face = "bold"))
+```
+
+Određivanje proseka poena na osnovu Hours_Studied i Tutoring_Categories
+
+```{r}
+dataset_summary <- dataset %>%
+  group_by(Hours_Studied_Interval, Tutoring_Categories) %>%
+  summarise(Avg_Exam_Score = mean(Exam_Score, na.rm = TRUE), .groups = 'drop')
+print(dataset_summary)
+```
+
+Grafički prikaz analize Hours_Studied_Interval, Tutoring_Categories i Exam_Score
+
+```{r}
+ggplot(dataset_summary, aes(x = Hours_Studied_Interval, y = Tutoring_Categories, fill = Avg_Exam_Score)) + geom_tile() + labs(title = "Average Exam Score by Hours Studied and Tutoring Categories", x = "Hours Studied Interval", y = "Tutoring Categories", fill = "Avg Exam Score") + scale_fill_viridis_c() + theme_minimal() + theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+```
+
+Grafički prikaz analize Internet_Access, Access_to_Resources i Exam_Score
+
+```{r}
+ggplot(dataset, aes(x = Internet_Access, y = Exam_Score)) + geom_boxplot(aes(fill = Internet_Access), color = "black")+ facet_wrap(~ Access_to_Resources) + labs(title = "Effect on Internet Access and Access to Resource on Exam Score") + xlab("Internet Access") + ylab("Exam Score") + theme(plot.title = element_text(hjust = 0.5, vjust = 1, face = "bold"), legend.position = "none")
+```
+
+Grafički prikaz analize Parental_Education_Level i Family Income
+
+```{r}
+ggplot(dataset, aes(x = Parental_Education_Level, fill = Family_Income)) + geom_bar(position = "dodge") + labs(title = "Parental Education Level vs Family Income") + xlab("Parental Education Level") + ylab("Count") + theme(plot.title = element_text(hjust = 0.5, vjust = 1, face = "bold"))
+```
+
+Grafički prikaz procentualne analize Parental_Education_Level i Family Income
+
+```{r}
+ggplot(dataset, aes(x = Parental_Education_Level, fill = Family_Income)) +
+geom_bar(position = "fill") + labs(title = "Percentage of Family Income by Parental Education Level", x = "Parental Education Level", y = "Percentage") + scale_y_continuous(labels = scales::percent) + theme_minimal() + theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+```
+
+Grafički prikaz analize Tutoring_Categories, Internet_Access i Exam_Score
+
+```{r}
+ggplot(dataset, aes(x = Tutoring_Categories, y = Exam_Score, color = Internet_Access)) + geom_boxplot() + labs(title = "Exam Score based on Tutoring Categories and Internet Access") + xlab("Tutoring Categories") + ylab("Exam Score") + theme(plot.title = element_text(hjust = 0.5, vjust = 1, face = "bold"))
+```
+
+Grafički prikaz analize Tutoring_Categories, Teacher_Quality i Gender
+
+```{r}
+ggplot(dataset, aes(x = Teacher_Quality, fill = Tutoring_Categories)) + geom_bar(position = "dodge") + labs(title = "Teacher Quality vs Tutoring Categories and Gender") + xlab("Teacher Quality") + ylab("Count") + facet_wrap(~ Gender) + theme(plot.title = element_text(hjust = 0.5, vjust = 1, face = "bold"))
+```
+
+Grafički prikaz analize Gender, Physical_Activity i Exam_Score
+
+```{r}
+ggplot(dataset, aes(x = Gender, y = Exam_Score, color = as.factor(Physical_Activity))) + geom_boxplot() + labs(title = "Exam Score based on Gender and Physical Activity", color = "Physical Activity") + xlab("Gender") + ylab("Exam Score") + theme(plot.title = element_text(hjust = 0.5, vjust = 1, face = "bold"))
+```
+
+Grafički prikaz analize Gender, Physical_Activity i Exam_Score
+
+```{r}
+ggplot(dataset, aes(x = School_Type, y = Exam_Score)) + geom_point(aes(color = Distance_from_Home)) + facet_wrap(~ Distance_from_Home) + labs(title = "Exam Score based on School Type and Distance from Home", color = "Distance from Home") + xlab("School Type") + ylab("Exam Score") + theme(plot.title = element_text(hjust = 0.5, vjust = 1, face = "bold"))
+```
+
+Korelaciona matrica sa numerickim vrednostima
+
+```{r}
+numeric_df <- dataset[sapply(dataset, is.numeric)]
+correlation_matrix <- cor(numeric_df)
+melted_corr <- melt(correlation_matrix)
+ggplot(data = melted_corr, aes(x = Var1, y = Var2, fill = value)) + geom_tile(color = "white") + scale_fill_gradient2(low = "red", high = "blue", mid = "white", midpoint = 0, limit = c(-1, 1), space = "Lab", name = "Pearson Correlation") + theme_minimal() + theme(axis.test.x = element_text(angle = 45, vjust = 1, size = 12, hjust = 1)) + coord_fixed()
+```
+
+Pretvaranje kategorijskih promenljivih u faktor varijable
+
+```{r}
+dataset$Parental_Involvement <- factor(dataset$Parental_Involvement)
+dataset$Access_to_Resources <- factor(dataset$Access_to_Resources)
+dataset$Extracurricular_Activities <- factor(dataset$Extracurricular_Activities)
+dataset$Motivation_Level <- factor(dataset$Motivation_Level)
+dataset$Internet_Access <- factor(dataset$Internet_Access)
+dataset$Family_Income <- factor(dataset$Family_Income)
+dataset$Teacher_Quality <- factor(dataset$Teacher_Quality)
+dataset$School_Type <- factor(dataset$School_Type)
+dataset$Peer_Influence <- factor(dataset$Peer_Influence)
+dataset$Learning_Disabilities <- factor(dataset$Learning_Disabilities)
+dataset$Parental_Education_Level <- factor(dataset$Parental_Education_Level)
+dataset$Distance_from_Home <- factor(dataset$Distance_from_Home)
+dataset$Gender <- factor(dataset$Gender)
+str(dataset)
+```
+
+Podela podataka na train i test skupove
+
+```{r}
+set.seed(14)
+train_indices <- sample(1:nrow(dataset), size = 0.75 * nrow(dataset))
+train_data <- dataset[train_indices, ]
+test_data <- dataset[-train_indices, ]
+cat("Veličina trening skupa:", nrow(train_data), "\n")
+cat("Veličina trening skupa:", nrow(test_data), "\n")
+```
+
+Raspodela kolone Exam Score iz skupa train_data
+
+```{r}
+ggplot(train_data, aes(x = Exam_Score)) + geom_histogram(fill = "steelblue", color = "black", binwidth = 1) + labs(title = "Distribution of the Exam_Score column") + xlab("Value") + ylab("Count") + theme(plot.title = element_text(hjust = 0.5, vjust = 1, face = "bold"))
+```
+
+Raspodela kolone Exam Score iz skupa test_data
+
+```{r}
+ggplot(test_data, aes(x = Exam_Score)) + geom_histogram(fill = "steelblue", color = "black", binwidth = 1) + labs(title = "Distribution of the Exam_Score column") + xlab("Value") + ylab("Count") + theme(plot.title = element_text(hjust = 0.5, vjust = 1, face = "bold"))
+```
+
+Pravimo prvi model linerne regresije lm.fit1
+
+```{r}
+lm.fit1 <- lm(Exam_Score ~ Hours_Studied + Attendance, data = train_data)
+summary(lm.fit1)
+```
+
+Pravimo prvi model linerne regresije lm.fit2
+
+```{r}
+lm.fit2 <- lm(Exam_Score ~ Hours_Studied + Attendance + Previous_Scores + Tutoring_Sessions, data = train_data)
+summary(lm.fit2)
+```
+
+Pravimo prvi model linerne regresije lm.fit3
+
+```{r}
+lm.fit3 <- lm(Exam_Score ~ Hours_Studied + Attendance + Previous_Scores + Tutoring_Sessions + Parental_Involvement + Access_to_Resources, data = train_data)
+summary(lm.fit3)
+```
+
+Pravimo prvi model linerne regresije lm.fit4
+
+```{r}
+lm.fit4 <- lm(Exam_Score ~ Hours_Studied + Attendance + Previous_Scores + Tutoring_Sessions + Parental_Involvement + Access_to_Resources + Family_Income + Motivation_Level, data = train_data)
+summary(lm.fit4)
+```
+
+Prikaz grafika za model linerane regresije lm.fit4
+
+```{r}
+par(mfrow = c(2, 2))
+plot(lm.fit4)
+```
+
+Pravimo model stabla odlučivanja (Decision Tree)
+
+```{r}
+tree_model <- rpart(Exam_Score ~ Hours_Studied + Attendance + Previous_Scores + Tutoring_Sessions + Parental_Involvement + Access_to_Resources + Family_Income + Motivation_Level + Sleep_Hours + Teacher_Quality, data = train_data, method = "anova")
+
+tree_model
+```
+
+Prikaz dodatnih statistika za model stabla odlučivanja
+
+```{r}
+summary(tree_model)
+```
+
+Predikcija i računanje grešaka da bismo videli koliko naš model greši i koliko je procentualno dobar
+
+```{r}
+tree_predictions <- predict(tree_model, newdata = test_data)
+# RMSE
+tree_rmse <- sqrt(mean((tree_predictions - test_data$Exam_Score) ^ 2))
+# MAE (Mean Absolute Error)
+tree_mae <- mean(abs(tree_predictions - test_data$Exam_Score))
+# MSE (Mean Squared Error)
+tree_mse <- mean((tree_predictions - test_data$Exam_Score) ^ 2)
+# R-squared
+ss_total <- sum((test_data$Exam_Score - mean(test_data$Exam_Score)) ^ 2)
+ss_residual <- sum((test_data$Exam_Score - tree_predictions) ^ 2)
+tree_r2 <- 1 - (ss_residual / ss_total)
+
+cat("RMSE:", tree_rmse, "\n")
+cat("MAE:", tree_mae, "\n")
+cat("MSE:", tree_mse, "\n")
+cat("R2:", tree_r2, "\n")
+```
+
+Da bismo videli značaj svake varijable u modelu
+
+```{r}
+print(tree_model$variable.importance)
+```
+
+Pravimo nov model (Random Forest)
+
+```{r}
+rf_model <- randomForest(Exam_Score ~ Hours_Studied + Attendance + Previous_Scores + Tutoring_Sessions + Parental_Involvement + Access_to_Resources + Family_Income + Motivation_Level + Sleep_Hours + Teacher_Quality, data = train_data, ntree = 100)
+
+rf_model
+```
+
+Predikcija i računanje grešaka da bismo videli koliko naš model greši i koliko je procentualno dobar
+
+```{r}
+rf_predictions <- predict(rf_model, newdata = test_data)
+# RMSE
+rmse <- sqrt(mean((rf_predictions - test_data$Exam_Score) ^ 2))
+# MAE (Mean Absolute Error)
+mae <- mean(abs(rf_predictions - test_data$Exam_Score))
+# MSE (Mean Squared Error)
+mse <- mean((rf_predictions - test_data$Exam_Score) ^ 2)
+# R-squared
+ss_total <- sum((test_data$Exam_Score - mean(test_data$Exam_Score)) ^ 2)
+ss_residual <- sum((test_data$Exam_Score - rf_predictions) ^ 2)
+r2 <- 1 - (ss_residual / ss_total)
+
+cat("RMSE:", rmse, "\n")
+cat("MAE:", mae, "\n")
+cat("MSE:", mse, "\n")
+cat("R2:", r2, "\n")
+```
